@@ -1,0 +1,97 @@
+role client(A, B, S: agent, KAS: symmetric_key,  SND_S,RCV_S, SND_B,RCV_B: channel(dy))
+played_by A
+def=
+  local
+    State: nat,
+    N1, N2: text,
+    KAB: symmetric_key,
+    T: {symmetric_key.text.text}_symmetric_key
+  init
+    State := 0
+  transition
+    1. State = 0 /\ RCV_B(start) 
+       =|> State' := 2
+       /\  N1' := new()
+       /\  SND_S(A.B.{N1'}_KAS)
+
+    2. State = 2 /\ RCV_S(A.B.{KAB'.N1.N2'}_KAS.T') 
+	   =|> State' := 4
+	   /\ SND_B(A.B.T'.{N1.N2'}_KAB')
+       
+
+    3. State = 4 /\ RCV_B(A.B.{N2.N1}_KAB) 
+	   =|>State' := 6
+	   /\ request(A,B, atob, N1)
+end role
+
+role service_provider(B, A, S: agent, KBS: symmetric_key,  SND, RCV: channel(dy))
+played_by B
+def=
+  local
+    State: nat,
+    KAB: symmetric_key,
+    N1, N2: text
+  init
+    State := 5
+  transition
+    1. State = 5 /\ RCV(A.B.{KAB'.N1'.N2'}_KBS.{N1'.N2'}_KAB') 
+	=|> State' := 7
+	/\ SND(A.B.{N2'.N1'}_KAB') %modificat aici
+	/\ witness(B, A, atob, N1')
+
+end role
+
+role server(S, A, B: agent, KAS, KBS: symmetric_key,  SND, RCV: channel(dy))
+played_by S
+def=
+  local
+    State: nat,
+    N1,N2: text,
+    KAB: symmetric_key
+  init
+    State := 1
+  transition
+    1. State = 1 /\ RCV(A.B.{N1'}_KAS) 
+	   =|>State' := 3
+	   /\ N2' := new() 
+	   /\ KAB' := new()
+	   /\ SND(A.B.{KAB'.N1'.N2'}_KAS.{KAB'.N1'.N2'}_KBS) 
+	   /\ secret(KAB', common_key, {A,B,S})
+end role
+
+role nssk(A,B,S : agent, KAS, KBS: symmetric_key)
+def= 
+	local
+		SA, RA: channel(dy),
+		SB, RB: channel(dy),
+		SS,RS : channel(dy),
+		SAB, RAB: channel(dy)
+	
+	composition
+		client(A, B, S, KAS, SA, RA, SB, RB)
+		/\ service_provider(B,A,S, KBS, SAB, RAB)
+		/\ server(S,A,B, KAS, KBS, SS, RS)
+
+end role
+
+role environment()
+def=
+  const
+    a,b,s: agent,
+    kas, kbs: symmetric_key,
+    atob, common_key: protocol_id
+
+  intruder_knowledge = {a,b,s}
+
+  composition
+    nssk(a,b,s,kas,kbs)
+end role
+
+
+goal
+  secrecy_of common_key
+  authentication_on atob
+end goal
+
+
+environment()
